@@ -1,1 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Sourdough Schedule</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            max-width: 700px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            background-color: #fdfbf5; /* Light sourdough-ish background */
+            color: #333;
+        }
+        h1 {
+            color: #8c5a2b; /* Crust color */
+            text-align: center;
+            border-bottom: 2px solid #e0d6c9; /* Light score line */
+            padding-bottom: 0.5rem;
+        }
+        .input-section label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #594020; /* Darker crumb color */
+        }
+        .input-section input[type="datetime-local"],
+        .input-section button {
+            padding: 0.75rem;
+            font-size: 1rem;
+            border: 1px solid #e0d6c9;
+            border-radius: 4px;
+            margin-right: 0.5rem;
+            background-color: #fff;
+        }
+        .input-section input[type="datetime-local"] {
+             min-width: 250px; /* Ensure enough space */
+        }
+        .input-section button {
+            background-color: #8c5a2b;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .input-section button:hover {
+            background-color: #594020;
+        }
+        #scheduleOutput {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background-color: #fff;
+            border: 1px solid #e0d6c9;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        #scheduleOutput h2 {
+            margin-top: 0;
+            color: #594020;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 0.5rem;
+        }
+        #scheduleOutput ul {
+            list-style: none;
+            padding: 0;
+        }
+        #scheduleOutput li {
+            padding: 0.6rem 0;
+            border-bottom: 1px dotted #eee;
+        }
+        #scheduleOutput li:last-child {
+            border-bottom: none;
+        }
+        #scheduleOutput .time {
+            font-weight: bold;
+            color: #8c5a2b;
+            display: inline-block;
+            min-width: 160px; /* Align times */
+        }
+        .error {
+            color: #d9534f; /* Red for errors */
+            font-weight: bold;
+        }
+        .note {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 1rem;
+            border-top: 1px solid #eee;
+            padding-top: 1rem;
+        }
+    </style>
+</head>
+<body>
 
+    <h1>Sourdough Schedule Calculator</h1>
+
+    <p>Enter the time you plan to mix your starter, flour, and water (final mix). The calculator will estimate timings for common steps. Adjust based on your specific recipe, dough temperature, and environment!</p>
+
+    <div class="input-section">
+        <label for="startTime">Start Time (Final Mix):</label>
+        <input type="datetime-local" id="startTime" name="startTime">
+        <button id="calculateBtn">Calculate Schedule</button>
+    </div>
+
+    <div id="scheduleOutput">
+        <h2>Your Estimated Schedule:</h2>
+        <p>Enter a start time and click calculate.</p>
+        </div>
+
+    <script>
+        // --- Configuration (Adjust these intervals in minutes) ---
+        const AUTOLYSE_DURATION = 0; // Set to 30-60 if you do one before mixing starter
+        const MIX_TO_FIRST_FOLD = 30;
+        const FOLD_INTERVAL = 45; // Time between subsequent folds
+        const NUMBER_OF_FOLDS = 3; // Total number of stretch & fold sets
+        const LAST_FOLD_TO_PRESHAPE = 60; // Bulk ferment time after last fold
+        const PRESHAPE_REST = 30;
+        const SHAPE_TO_BAKE = 120; // Assumes ~2hr room temp proof. Adjust significantly for cold proofing.
+        const OVEN_PREHEAT_TIME = 45; // How long before baking to start preheating
+        // --------------------------------------------------------
+
+        const startTimeInput = document.getElementById('startTime');
+        const calculateBtn = document.getElementById('calculateBtn');
+        const scheduleOutput = document.getElementById('scheduleOutput');
+
+        // Function to add minutes to a Date object
+        function addMinutes(date, minutes) {
+            // Create a new Date object to avoid modifying the original
+            const newDate = new Date(date.getTime());
+            newDate.setMinutes(newDate.getMinutes() + minutes);
+            return newDate;
+        }
+
+        // Function to format Date object for display
+        function formatDateTime(date) {
+            if (!date || isNaN(date.getTime())) {
+                return 'Invalid Date';
+            }
+            // Options for formatting: e.g., "Sun, Apr 6, 2:30 PM"
+             const options = {
+                weekday: 'short',
+                // year: 'numeric', // Often unnecessary for short schedules
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true // Use AM/PM
+             };
+            return date.toLocaleString(undefined, options); // Use browser's default locale
+        }
+
+        calculateBtn.addEventListener('click', () => {
+            const startTimeValue = startTimeInput.value;
+            if (!startTimeValue) {
+                scheduleOutput.innerHTML = `<h2>Your Estimated Schedule:</h2><p class="error">Please select a valid start date and time.</p>`;
+                return;
+            }
+
+            const startTime = new Date(startTimeValue);
+
+            if (isNaN(startTime.getTime())) {
+                scheduleOutput.innerHTML = `<h2>Your Estimated Schedule:</h2><p class="error">Invalid date/time format entered.</p>`;
+                return;
+            }
+
+            let scheduleHTML = '<h2>Your Estimated Schedule:</h2><ul>';
+            let currentTime = startTime;
+
+            scheduleHTML += `<li><span class="time">${formatDateTime(currentTime)}</span> - Start Final Mix</li>`;
+
+            // Optional Autolyse step display
+            if (AUTOLYSE_DURATION > 0) {
+                const autolyseEndTime = addMinutes(currentTime, AUTOLYSE_DURATION);
+                // Note: In reality, the "Start Final Mix" time would be *after* autolyse.
+                // This logic assumes the input time IS the final mix start.
+                // You might adjust prompt text if including autolyse.
+                scheduleHTML += `<li><span class="time">???</span> - (Autolyse would end around now if started earlier)</li>`;
+            }
+
+            // Stretch and Folds
+            currentTime = addMinutes(currentTime, MIX_TO_FIRST_FOLD);
+            scheduleHTML += `<li><span class="time">${formatDateTime(currentTime)}</span> - Stretch & Fold #1</li>`;
+
+            for (let i = 2; i <= NUMBER_OF_FOLDS; i++) {
+                currentTime = addMinutes(currentTime, FOLD_INTERVAL);
+                scheduleHTML += `<li><span class="time">${formatDateTime(currentTime)}</span> - Stretch & Fold #${i}</li>`;
+            }
+
+            // End of Bulk Fermentation / Pre-shape
+            currentTime = addMinutes(currentTime, LAST_FOLD_TO_PRESHAPE);
+            scheduleHTML += `<li><span class="time">${formatDateTime(currentTime)}</span> - Pre-shape</li>`;
+
+            // Final Shape
+            currentTime = addMinutes(currentTime, PRESHAPE_REST);
+            scheduleHTML += `<li><span class="time">${formatDateTime(currentTime)}</span> - Final Shape</li>`;
+
+            // Bake Time (based on room temp proof)
+            const bakeTime = addMinutes(currentTime, SHAPE_TO_BAKE);
+
+            // Oven Preheat Time
+            const preheatTime = addMinutes(bakeTime, -OVEN_PREHEAT_TIME);
+            scheduleHTML += `<li><span class="time">${formatDateTime(preheatTime)}</span> - Start Oven Preheat 🔥</li>`;
+
+            scheduleHTML += `<li><span class="time">${formatDateTime(bakeTime)}</span> - Bake! 🍞</li>`;
+
+            scheduleHTML += '</ul>';
+
+            // Add Notes
+            scheduleHTML += `<div class="note">
+                <strong>Note:</strong> This is an *estimated* schedule. Sourdough timing depends heavily on starter activity, ambient temperature, dough temperature, and flour type. Observe your dough!
+                <br>
+                The "Bake" time assumes a room temperature proof (~${SHAPE_TO_BAKE / 60} hours). For cold proofing (retarding) in the fridge, shape the dough, place it in the fridge (covered), and bake typically 8-24 hours later (or more), usually straight from the fridge after preheating the oven.
+            </div>`;
+
+
+            scheduleOutput.innerHTML = scheduleHTML;
+        });
+
+        // Set default start time to current time for convenience
+         function setDefaultTime() {
+            const now = new Date();
+            // Adjust for local timezone offset
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+             // Format for datetime-local input (YYYY-MM-DDTHH:mm)
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+            const dd = String(now.getDate()).padStart(2, '0');
+            const hh = String(now.getHours()).padStart(2, '0');
+            const min = String(now.getMinutes()).padStart(2, '0');
+            startTimeInput.value = `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+         }
+
+        setDefaultTime(); // Set default on page load
+
+    </script>
+
+</body>
+</html>
